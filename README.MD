@@ -28,8 +28,7 @@ Configuration
 1. Cloner le dépôt
 
 ```bash
-git clone <votre-repo>
-cd <votre-repo>
+git clone https://github.com/Marningstar-Diaries/Bot_Localisation
 ```
 
 1. Installer les dépendances
@@ -76,7 +75,7 @@ Menu clavier
 🔧 Structure du projet
 
 ```
-├── bot.py                 # Script principal du bot
+├── main.py                 # Script principal du bot
 ├── .env                   # Variables d'environnement
 ├── requirements.txt       # Dépendances Python
 └── README.md             # Documentation
@@ -110,7 +109,7 @@ Le bot communique avec un serveur Node.js sur les endpoints suivants :
 Local
 
 ```bash
-python bot.py
+python main.py
 ```
 
 Production

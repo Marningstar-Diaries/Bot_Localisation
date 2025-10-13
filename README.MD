@@ -53,7 +53,7 @@ SERVER_URL=http://localhost:3000
 1. Démarrer le bot
 
 ```bash
-python bot.py
+python main.py
 ```
 
 🎯 Utilisation

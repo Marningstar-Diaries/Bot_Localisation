@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # === Variables d'environnement ===
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-LOCATION_URL = os.getenv("LOCATION_URL")
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+LOCATION_URL = os.environ.get("LOCATION_URL")
 
 # ===========================
 # COMMANDES BOT
@@ -76,3 +76,4 @@ if __name__ == "__main__":
 
     print("🤖 Bot Telegram connecté et en ligne...")
     app_tg.run_polling()
+

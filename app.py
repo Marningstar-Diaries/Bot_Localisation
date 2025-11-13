@@ -1,125 +1,78 @@
-from flask import Flask, request, jsonify, render_template_string
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime
-import logging
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+import requests
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-# =========================================================
-# 🔧 Configuration Flask et SQLAlchemy
-# =========================================================
-app = Flask(__name__)
+# === Variables d'environnement ===
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+LOCATION_URL = os.getenv("LOCATION_URL")
 
-engine = create_engine("sqlite:///bot_data.db", echo=False)
-Base = declarative_base()
-Session = sessionmaker(bind=engine)
-session = Session()
+# ===========================
+# COMMANDES BOT
+# ===========================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Message de bienvenue avec menu"""
+    keyboard = ReplyKeyboardMarkup([["Lien 🌐", "Coordonnées 📍"]], resize_keyboard=True)
+    await update.message.reply_text(
+        f"👋 Salut {update.effective_user.first_name} !\n"
+        "Bienvenue sur le bot de géolocalisation.\n"
+        "Utilise les boutons ci-dessous pour accéder aux fonctions 👇 :",
+        reply_markup=keyboard
+    )
 
-# =========================================================
-# 📦 Modèle de données
-# =========================================================
-class Coord(Base):
-    __tablename__ = "coords"
-    id = Column(Integer, primary_key=True)
-    username = Column(String)
-    latitude = Column(Float)
-    longitude = Column(Float)
-    source = Column(String, default="telegram_bot")  # utile pour tracer la provenance
-    created_at = Column(DateTime, default=datetime.utcnow)
+async def lien(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envoie le lien du site Flask (Render)"""
+    await update.message.reply_text(
+        f"🌐 Clique ici pour envoyer ta position :\n{LOCATION_URL}/"
+    )
 
-Base.metadata.create_all(engine)
+async def coordonnees(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Récupère les coordonnées depuis le serveur Flask"""
+    try:
+        response = requests.get(f"{LOCATION_URL}/coords")
+        if response.status_code == 200:
+            data = response.json()
+            if not data:
+                await update.message.reply_text("⚠️ Aucune coordonnée enregistrée pour le moment.")
+                return
 
-# =========================================================
-# 🧾 Configuration du logging
-# =========================================================
-logging.basicConfig(
-    filename="bot_coords.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+            msg = "🗺️ **Dernières coordonnées enregistrées :**\n\n"
+            for c in reversed(data[-5:]):  # affiche les 5 dernières
+                username = c.get("username", "Utilisateur inconnu")
+                lat = c.get("latitude")
+                lon = c.get("longitude")
+                created = c.get("created_at")
+                msg += f"👤 {username}\n📍 Lat: {lat:.5f}, Lon: {lon:.5f}\n🕒 {created}\n\n"
 
-# =========================================================
-# 🌍 Page HTML minimale
-# =========================================================
-HTML_PAGE = """
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<title>📍 Partage ta position</title>
-</head>
-<body>
-<h2>📍 Récupération automatique de ta position...</h2>
-<script>
-if (navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(success, error);
-} else { alert("La géolocalisation n'est pas supportée."); }
+            await update.message.reply_text(msg, parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ Erreur lors de la récupération des données.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Impossible de contacter le serveur.\nErreur : {e}")
 
-async function success(pos) {
-  const { latitude, longitude } = pos.coords;
-  await fetch("/coords", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({latitude, longitude})
-  });
-  window.location.href = "https://google.com";  // Redirection finale
-}
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gère les clics sur le menu clavier"""
+    text = update.message.text
+    if text == "Lien 🌐":
+        await lien(update, context)
+    elif text == "Coordonnées 📍":
+        await coordonnees(update, context)
+    else:
+        await update.message.reply_text("Commande non reconnue. Utilise le menu ci-dessous 👇")
 
-function error(err) { alert("Erreur de localisation: " + err.message); }
-</script>
-</body>
-</html>
-"""
-
-# =========================================================
-# 🧠 Routes Flask
-# =========================================================
-
-@app.route("/")
-def index():
-    return render_template_string(HTML_PAGE)
-
-@app.route("/coords", methods=["POST", "GET"])
-def coords():
-    if request.method == "POST":
-        try:
-            data = request.get_json()
-            latitude = data.get("latitude")
-            longitude = data.get("longitude")
-
-            if latitude is None or longitude is None:
-                return jsonify({"error": "Coordonnées invalides"}), 400
-
-            new_coord = Coord(
-                username="Anonyme",
-                latitude=latitude,
-                longitude=longitude
-            )
-            session.add(new_coord)
-            session.commit()
-
-            logging.info(f"Coordonnées enregistrées : {latitude}, {longitude}")
-            return jsonify({"message": "Coordonnées enregistrées ✅"})
-        except Exception as e:
-            session.rollback()
-            logging.error(f"Erreur lors de l'enregistrement : {e}")
-            return jsonify({"error": "Erreur interne du serveur"}), 500
-
-    # GET : afficher les 10 dernières coordonnées
-    coords = session.query(Coord).order_by(Coord.created_at.desc()).limit(10).all()
-    return jsonify([
-        {
-            "username": c.username,
-            "latitude": c.latitude,
-            "longitude": c.longitude,
-            "source": c.source,
-            "date": c.created_at.strftime("%d/%m/%Y %H:%M")
-        }
-        for c in coords
-    ])
-
-# =========================================================
-# 🚀 Lancement du serveur
-# =========================================================
+# ===========================
+# LANCEMENT DU BOT
+# ===========================
 if __name__ == "__main__":
-    print("🌍 Serveur Flask en ligne sur http://127.0.0.1:5000")
-    app.run(host="0.0.0.0", port=5000)
+    app_tg = ApplicationBuilder().token(TOKEN).build()
+    app_tg.add_handler(CommandHandler("start", start))
+    app_tg.add_handler(CommandHandler("lien", lien))
+    app_tg.add_handler(CommandHandler("coordonnees", coordonnees))
+    app_tg.add_handler(CommandHandler("help", start))
+    app_tg.add_handler(CommandHandler("menu", start))
+    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+    print("🤖 Bot Telegram connecté et en ligne...")
+    app_tg.run_polling()

@@ -66,7 +66,7 @@ async def derniere_coord(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("⚠️ Aucune coordonnée enregistrée.")
                 return
 
-            last = data[-1]  # dernière coordonnée enregistrée
+            last = data[0]  # dernière coordonnée enregistrée
 
             username = last.get("username", "Utilisateur inconnu")
             lat = last.get("latitude")
@@ -115,3 +115,4 @@ if __name__ == "__main__":
 
     print("🤖 Bot Telegram connecté et en ligne...")
     app_tg.run_polling()
+

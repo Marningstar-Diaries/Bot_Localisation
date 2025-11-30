@@ -14,7 +14,10 @@ LOCATION_URL = os.environ.get("LOCATION_URL")
 # ===========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Message de bienvenue avec menu"""
-    keyboard = ReplyKeyboardMarkup([["Lien 🌐", "Coordonnées 📍"]], resize_keyboard=True)
+    keyboard = ReplyKeyboardMarkup(
+        [["Lien 🌐", "Coordonnées 📍"], ["Dernière Coordonnées 🆕"]],
+        resize_keyboard=True
+    )
     await update.message.reply_text(
         f"👋 Salut {update.effective_user.first_name} !\n"
         "Bienvenue sur le bot de géolocalisation.\n"
@@ -29,17 +32,17 @@ async def lien(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def coordonnees(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Récupère les coordonnées depuis le serveur Flask"""
+    """Récupère toutes les coordonnées depuis le serveur Flask"""
     try:
         response = requests.get(f"{LOCATION_URL}/coords")
         if response.status_code == 200:
             data = response.json()
             if not data:
-                await update.message.reply_text("⚠️ Aucune coordonnée enregistrée pour le moment.")
+                await update.message.reply_text("⚠️ Aucune coordonnée enregistrée.")
                 return
 
-            msg = "🗺️ **Dernières coordonnées enregistrées :**\n\n"
-            for c in reversed(data[-5:]):  # affiche les 5 dernières
+            msg = "🗺️ **Toutes les coordonnées enregistrées :**\n\n"
+            for c in reversed(data):
                 username = c.get("username", "Utilisateur inconnu")
                 lat = c.get("latitude")
                 lon = c.get("longitude")
@@ -52,13 +55,47 @@ async def coordonnees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Impossible de contacter le serveur.\nErreur : {e}")
 
+async def derniere_coord(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Récupère UNIQUEMENT la dernière coordonnée"""
+    try:
+        response = requests.get(f"{LOCATION_URL}/coords")
+        if response.status_code == 200:
+            data = response.json()
+
+            if not data:
+                await update.message.reply_text("⚠️ Aucune coordonnée enregistrée.")
+                return
+
+            last = data[-1]  # dernière coordonnée enregistrée
+
+            username = last.get("username", "Utilisateur inconnu")
+            lat = last.get("latitude")
+            lon = last.get("longitude")
+            created = last.get("date")
+
+            msg = (
+                "🆕 **Dernière coordonnée enregistrée :**\n\n"
+                f"👤 {username}\n"
+                f"📍 Lat: {lat:.5f}, Lon: {lon:.5f}\n"
+                f"🕒 {created}"
+            )
+
+            await update.message.reply_text(msg, parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ Erreur lors de la récupération des données.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Impossible de contacter le serveur.\nErreur : {e}")
+
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gère les clics sur le menu clavier"""
     text = update.message.text
+
     if text == "Lien 🌐":
         await lien(update, context)
     elif text == "Coordonnées 📍":
         await coordonnees(update, context)
+    elif text == "Dernière Coordonnées 🆕":
+        await derniere_coord(update, context)
     else:
         await update.message.reply_text("Commande non reconnue. Utilise le menu ci-dessous 👇")
 
@@ -67,14 +104,14 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===========================
 if __name__ == "__main__":
     app_tg = ApplicationBuilder().token(TOKEN).build()
+
     app_tg.add_handler(CommandHandler("start", start))
     app_tg.add_handler(CommandHandler("lien", lien))
     app_tg.add_handler(CommandHandler("coordonnees", coordonnees))
+    app_tg.add_handler(CommandHandler("derniere", derniere_coord))
     app_tg.add_handler(CommandHandler("help", start))
     app_tg.add_handler(CommandHandler("menu", start))
     app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     print("🤖 Bot Telegram connecté et en ligne...")
     app_tg.run_polling()
-
-
